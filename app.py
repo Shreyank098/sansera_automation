@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-with open("TinyLlama_Compression_Book (1).html", "r", encoding="utf-8") as f:
+with open("milestone_3d_white.html", "r", encoding="utf-8") as f:
     html_content = f.read()
 
 components.html(html_content, height=800, scrolling=True)
