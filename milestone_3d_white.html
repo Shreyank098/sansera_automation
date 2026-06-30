@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Milestone 3D Chart</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #FFFFFF;
+    color: #374151;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 1200px;
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chart-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: #111827;
+    letter-spacing: 0.01em;
+  }
+  .chart-hint {
+    font-size: 11px;
+    color: #9CA3AF;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .ctrl-label {
+    font-size: 11px;
+    color: #9CA3AF;
+    margin-right: 2px;
+  }
+  .yr-btn {
+    padding: 3px 13px;
+    border: 1px solid #E5E7EB;
+    background: transparent;
+    color: #6B7280;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .yr-btn:hover { border-color: #93C5FD; color: #2563EB; }
+  .yr-btn.active { background: #EFF6FF; border-color: #3B82F6; color: #1D4ED8; }
+
+  .ev-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+    margin-bottom: 10px;
+  }
+  .ev-pill {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #6B7280;
+    cursor: pointer; padding: 3px 9px;
+    border: 1px solid rgba(168,180,194,0.1);
+    border-radius: 3px;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .ev-pill:hover { color: #374151; border-color: rgba(168,180,194,0.22); }
+  .ev-pill.hidden { opacity: 0.25; }
+  .ev-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  #canvas-wrap {
+    position: relative;
+    width: 100%;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #FFFFFF;
+  }
+
+  #c3d { width: 100%; height: 580px; cursor: grab; display: block; }
+  #c3d:active { cursor: grabbing; }
+
+  #tooltip3d {
+    position: absolute;
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+    background: #F5F7FA;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #111827;
+    line-height: 1.7;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+
+  .pm-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 14px;
+    margin-top: 10px;
+  }
+  .pm-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #9CA3AF;
+  }
+  .pm-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  .axis-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 10px;
+    color: #2A3A4A;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top-bar">
+    <span class="chart-title">Events by PM · Month · Type</span>
+    <span class="chart-hint">Drag to rotate &nbsp;·&nbsp; Scroll to zoom</span>
+  </div>
+
+  <div class="controls">
+    <span class="ctrl-label">Year</span>
+    <div id="yr-btns"></div>
+  </div>
+
+  <div class="ev-legend" id="ev-legend"></div>
+
+  <div id="canvas-wrap">
+    <div id="tooltip3d"></div>
+    <div id="c3d"></div>
+  </div>
+
+  <div class="pm-legend" id="pm-legend"></div>
+  <div class="axis-labels">
+    <span>← X axis: Project Manager</span>
+    <span>Z axis: Month →</span>
+    <span>Y axis: No. of events ↑</span>
+  </div>
+</div>
+
+<script>
+const PMS    = ['Akarsh','Chethan','Deepak','Dinesh','Harsha','Jagruth','Manoj','Sandeep'];
+const PM_HEX = ['#2a78d6','#1baf7a','#eda100','#008300','#4a3aa7','#e34948','#e87ba4','#eb6834'];
+const EVENTS  = ['PROTO','SS1','SS2','SS3','IPPAP','PPAP','SOP'];
+const EV_LABEL= ['Proto','SS1','SS2','SS3','IPPAP','PPAP','SOP'];
+const EV_HEX  = ['#f59e0b','#86efac','#4ade80','#16a34a','#fb923c','#ef4444','#a78bfa'];
+
+const RAW_EV = {
+  '2024-MAR':[[2,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],
+  '2024-AUG':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],
+  '2024-SEP':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,1,0,0,0,0,1]],
+  '2024-OCT':[[0,0,0,0,0,0,0],[0,0,0,0,1,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,1,1],[1,0,0,0,1,1,0]],
+  '2024-NOV':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,1,1],[0,0,0,0,1,0,0]],
+  '2024-DEC':[[0,0,0,0,1,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,1,0,0]],
+  '2025-JAN':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0]],
+  '2025-FEB':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[3,0,0,0,0,1,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],
+  '2025-MAR':[[0,1,0,0,0,0,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[1,0,0,0,0,0,0]],
+  '2025-MAY':[[2,1,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],
+  '2025-JUN':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,1,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,1,0]],
+  '2025-JUL':[[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[2,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],
+  '2025-AUG':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[4,1,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]],
+  '2025-SEP':[[0,0,0,0,0,0,0],[0,0,0,0,0,1,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[2,0,0,0,1,1,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[1,0,0,0,0,0,0]],
+  '2025-OCT':[[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[2,0,0,0,0,1,0],[1,0,0,0,0,1,0],[2,0,0,0,1,1,0],[0,0,0,0,0,0,0]],
+  '2025-NOV':[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[3,0,0,0,2,1,0],[1,0,0,0,0,0,0],[2,0,0,0,1,2,0],[0,0,0,0,0,0,0]],
+  '2025-DEC':[[2,0,0,0,2,0,0],[1,0,0,0,1,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[2,0,0,1,1,1,0],[1,0,0,0,0,1,0],[2,0,0,0,2,2,0],[1,0,0,0,1,1,0]],
+  '2026-JAN':[[6,1,0,0,4,1,0],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[4,1,0,0,3,1,0],[1,0,0,0,0,0,0],[5,1,0,0,3,2,0],[2,1,0,0,0,0,0]],
+  '2026-FEB':[[2,1,0,0,2,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[3,1,0,0,3,1,1],[1,0,0,0,0,0,0],[3,1,0,0,3,1,1],[1,1,0,0,1,0,0]],
+  '2026-MAR':[[2,2,0,0,2,2,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,0],[2,2,0,0,2,1,1],[0,0,0,0,0,0,0],[3,2,0,0,3,3,2],[1,1,0,0,1,1,1]],
+  '2026-APR':[[1,1,0,0,1,1,0],[1,0,0,0,1,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,0],[2,1,0,0,3,2,1],[0,0,0,0,0,0,0],[2,1,0,0,2,2,1],[1,1,0,0,2,1,0]],
+  '2026-MAY':[[3,2,0,0,2,2,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[2,1,0,0,2,2,1],[0,0,0,0,0,0,0],[3,2,0,0,3,2,1],[1,1,0,0,2,1,0]],
+  '2026-JUN':[[1,0,0,0,0,1,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,2,1,2],[0,0,0,0,0,0,0],[2,0,0,0,2,2,3],[1,0,0,0,1,1,0]],
+  '2026-JUL':[[1,0,0,0,0,0,1],[1,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,1],[0,0,0,0,0,0,0],[1,0,0,0,1,1,1],[0,0,0,0,1,0,0]],
+  '2026-AUG':[[1,0,0,0,1,1,2],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[2,0,0,0,1,1,4],[0,0,0,0,0,0,0],[2,0,0,0,2,1,4],[1,0,0,0,1,1,1]],
+  '2026-SEP':[[1,0,0,0,0,0,2],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,2],[0,0,0,0,0,0,0],[1,0,0,0,1,0,2],[0,0,0,0,1,0,1]],
+  '2026-OCT':[[1,0,0,0,1,0,2],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,1,2],[0,0,0,0,0,0,0],[1,0,0,0,1,1,2],[0,0,0,0,1,0,1]],
+  '2026-NOV':[[1,0,0,0,0,0,2],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,2],[0,0,0,0,0,0,0],[1,0,0,0,1,0,2],[0,0,0,0,1,0,1]],
+  '2026-DEC':[[2,0,0,0,2,2,3],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,2],[0,0,0,0,0,0,0],[1,0,0,0,1,1,2],[0,0,0,0,1,0,1]],
+  '2027-JAN':[[1,0,0,0,1,0,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,1],[0,0,0,0,0,0,0],[1,0,0,0,1,1,1],[1,0,0,0,0,0,1]],
+  '2027-FEB':[[2,0,0,0,2,2,3],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,1],[0,0,0,0,0,0,0],[1,0,0,0,1,1,1],[1,0,0,0,0,0,1]],
+  '2027-MAR':[[1,0,0,0,1,1,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,1,0,1],[0,0,0,0,0,0,0],[1,0,0,0,1,0,1],[1,0,0,0,0,0,1]],
+  '2027-APR':[[1,0,0,0,1,1,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,1],[0,0,0,0,0,0,0],[1,0,0,0,1,0,1],[1,0,0,0,0,0,1]],
+  '2027-MAY':[[1,0,0,0,1,1,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[1,0,0,0,0,0,1],[0,0,0,0,0,0,0],[1,0,0,0,0,0,1],[1,0,0,0,0,0,1]],
+  '2027-JUL':[[1,0,0,0,0,0,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,1],[0,0,0,0,0,0,0],[1,0,0,0,0,0,1],[0,0,0,0,0,0,1]],
+  '2027-SEP':[[1,0,0,0,0,0,1],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,1],[0,0,0,0,0,0,0],[1,0,0,0,0,0,1],[0,0,0,0,0,0,1]]
+};
+
+const ALL_MONTHS = Object.keys(RAW_EV);
+const YEARS = ['2024','2025','2026','2027'];
+let activeYear = '2026';
+let hiddenEvents = new Set();
+
+const container = document.getElementById('c3d');
+const W = container.offsetWidth || 900, H = 580;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, W/H, 0.1, 1000);
+camera.position.set(20, 16, 30);
+camera.lookAt(0, 2, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const dl = new THREE.DirectionalLight(0xffffff, 0.55);
+dl.position.set(15, 25, 15); scene.add(dl);
+
+const bg = new THREE.Group(); scene.add(bg);
+const MAX_H=9, MAX_V=7, EBW=0.18, EGAP=0.04, PSP=2.8, MSP=1.9;
+
+function h2i(h){ return parseInt(h.replace('#',''),16); }
+function activeEvs(){ return EVENTS.map((ev,i)=>({ev,i})).filter(e=>!hiddenEvents.has(e.ev)); }
+
+function buildBars() {
+  while(bg.children.length) bg.remove(bg.children[0]);
+
+  const months = ALL_MONTHS.filter(m=>m.startsWith(activeYear));
+  const nM=months.length, nP=PMS.length, aEvs=activeEvs(), nE=aEvs.length;
+  const gW = nE*(EBW+EGAP)-EGAP;
+  const oX = -(nP*PSP)/2+PSP/2, oZ = -(nM*MSP)/2+MSP/2;
+  const fW=(nP-1)*PSP+2.6, fD=(nM-1)*MSP+1.8;
+  const fCX=oX+(nP-1)*PSP/2, fCZ=oZ+(nM-1)*MSP/2;
+
+  // Floor
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(fW, fD),
+    new THREE.MeshLambertMaterial({ color: 0xF9FAFB, side: THREE.DoubleSide })
+  );
+  floor.rotation.x = -Math.PI/2;
+  floor.position.set(fCX, -0.01, fCZ);
+  bg.add(floor);
+
+  const z0=oZ-MSP*0.5, z1=oZ+(nM-0.5)*MSP;
+  const x0=oX-PSP*0.5, x1=oX+(nP-0.5)*PSP;
+
+  // Soft PM column gridlines
+  const pmMat = new THREE.LineBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.35 });
+  PMS.forEach((_,xi)=>{
+    const x = oX+xi*PSP;
+    bg.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x,0,z0), new THREE.Vector3(x,0,z1)
+    ]), pmMat));
+  });
+
+  // Soft month row gridlines
+  const moMat = new THREE.LineBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.35 });
+  months.forEach((_,zi)=>{
+    const z = oZ+zi*MSP;
+    bg.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x0,0,z), new THREE.Vector3(x1,0,z)
+    ]), moMat));
+  });
+
+  // Very faint Y-level horizontal planes
+  const yMat = new THREE.LineBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.18 });
+  [2,4,6].forEach(v=>{
+    const y = (v/MAX_V)*MAX_H;
+    // Along months axis
+    months.forEach((_,zi)=>{
+      const z=oZ+zi*MSP;
+      bg.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x0,y,z), new THREE.Vector3(x1,y,z)
+      ]), yMat));
+    });
+    // Along PM axis
+    PMS.forEach((_,xi)=>{
+      const x=oX+xi*PSP;
+      bg.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x,y,z0), new THREE.Vector3(x,y,z1)
+      ]), yMat));
+    });
+  });
+
+  // Bars
+  months.forEach((mo,zi)=>{
+    PMS.forEach((pm,xi)=>{
+      const ed = RAW_EV[mo][xi];
+      aEvs.forEach(({ev,i:ei},slot)=>{
+        const val = ed[ei];
+        if(!val) return;
+        const h = Math.max(0.05,(val/MAX_V)*MAX_H);
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(EBW, h, EBW*1.8),
+          new THREE.MeshLambertMaterial({ color: h2i(EV_HEX[ei]) })
+        );
+        const xOff = -gW/2+slot*(EBW+EGAP)+EBW/2;
+        mesh.position.set(oX+xi*PSP+xOff, h/2, oZ+zi*MSP);
+        mesh.userData = { pm, month:mo, event:EV_LABEL[ei], val, ei };
+        bg.add(mesh);
+      });
+    });
+  });
+
+  // Labels
+  function spr(text, fs, col, cw, ch, align){
+    const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+    const cx=cv.getContext('2d');
+    cx.fillStyle=col;
+    cx.font=`500 ${fs}px Inter,sans-serif`;
+    cx.textAlign=align||'center';
+    cx.fillText(text, align==='right'?cw-4:cw/2, ch*0.72);
+    const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true}));
+    return s;
+  }
+
+  PMS.forEach((pm,xi)=>{
+    const s=spr(pm,17,'#374151',140,34);
+    s.scale.set(2.5,0.6,1); s.position.set(oX+xi*PSP,0.08,oZ-1.4); bg.add(s);
+  });
+  months.forEach((mo,zi)=>{
+    const s=spr(mo.split('-')[1],16,'#6B7280',90,32);
+    s.scale.set(1.6,0.5,1); s.position.set(oX-2.1,0.08,oZ+zi*MSP); bg.add(s);
+  });
+  [0,2,4,6].forEach(v=>{
+    const y=(v/MAX_V)*MAX_H;
+    bg.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(oX-0.6,y,oZ-0.5), new THREE.Vector3(oX-0.35,y,oZ-0.5)
+    ]), new THREE.LineBasicMaterial({color:0x243040})));
+    const s=spr(String(v),13,'#6B7280',48,28,'right');
+    s.scale.set(0.9,0.5,1); s.position.set(oX-1.25,y,oZ-0.5); bg.add(s);
+  });
+}
+
+buildBars();
+
+let rY=0.4, rX=0.28; bg.rotation.set(rX,rY,0);
+let drag=false, prev={x:0,y:0};
+renderer.domElement.addEventListener('mousedown',e=>{drag=true;prev={x:e.clientX,y:e.clientY};});
+window.addEventListener('mouseup',()=>drag=false);
+window.addEventListener('mousemove',e=>{
+  if(!drag) return;
+  rY+=(e.clientX-prev.x)*0.01;
+  rX=Math.max(-0.4,Math.min(1.1,rX+(e.clientY-prev.y)*0.01));
+  prev={x:e.clientX,y:e.clientY};
+  bg.rotation.set(rX,rY,0);
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  const d=camera.position.length();
+  camera.position.setLength(Math.max(14,Math.min(60,d+e.deltaY*0.05)));
+  e.preventDefault();
+},{passive:false});
+
+const ray=new THREE.Raycaster(), mp=new THREE.Vector2();
+const tt=document.getElementById('tooltip3d');
+renderer.domElement.addEventListener('mousemove',e=>{
+  const r=renderer.domElement.getBoundingClientRect();
+  mp.x=((e.clientX-r.left)/r.width)*2-1;
+  mp.y=-((e.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(mp,camera);
+  const hit=ray.intersectObjects(bg.children).find(h=>h.object.userData.val!==undefined);
+  if(hit){
+    const d=hit.object.userData;
+    tt.style.display='block';
+    tt.style.left=(e.clientX-r.left+14)+'px';
+    tt.style.top=(e.clientY-r.top-10)+'px';
+    tt.innerHTML=`<strong style="color:#E8EDF2">${d.pm}</strong> &nbsp;·&nbsp; ${d.month}<br><span style="color:${EV_HEX[d.ei]};font-weight:600">${d.event}</span>: ${d.val} event${d.val!==1?'s':''}`;
+  } else { tt.style.display='none'; }
+});
+
+(function anim(){ requestAnimationFrame(anim); renderer.render(scene,camera); })();
+
+function buildYrBtns(){
+  document.getElementById('yr-btns').innerHTML=YEARS.map(y=>
+    `<button class="yr-btn${y===activeYear?' active':''}" onclick="setYear('${y}')">${y}</button>`
+  ).join('');
+}
+window.setYear=function(y){ activeYear=y; buildBars(); bg.rotation.set(rX,rY,0); buildYrBtns(); };
+buildYrBtns();
+
+function buildEvLegend(){
+  document.getElementById('ev-legend').innerHTML=EVENTS.map((ev,i)=>
+    `<span class="ev-pill${hiddenEvents.has(ev)?' hidden':''}" onclick="toggleEv('${ev}')">
+      <span class="ev-dot" style="background:${EV_HEX[i]}"></span>${EV_LABEL[i]}
+    </span>`
+  ).join('');
+}
+window.toggleEv=function(ev){
+  hiddenEvents.has(ev)?hiddenEvents.delete(ev):hiddenEvents.add(ev);
+  buildBars(); bg.rotation.set(rX,rY,0); buildEvLegend();
+};
+buildEvLegend();
+
+document.getElementById('pm-legend').innerHTML=PMS.map((pm,i)=>
+  `<span class="pm-item"><span class="pm-dot" style="background:${PM_HEX[i]}"></span>${pm}</span>`
+).join('');
+</script>
+</body>
+</html>
